@@ -1,8 +1,8 @@
 #| 0. Write your name and OU ID (the part before the 
    "@" in your email address) below:
   
-   NAME:
-   ID:
+   NAME: Alex Williams
+   ID: aw348916
    
    Many of the exercises in this file have something to do with Pyret
    lists. I recommend -- before you get started -- that you peruse
@@ -46,7 +46,10 @@ six   = S(five)
    if you forget). |#
 
 fun nat-plus(n :: Nat, m :: Nat) -> Nat:
-  ...
+  cases (Nat) n:
+    | O => m
+    | S(k) => S(nat-plus(k, m))
+  end
 where:
   nat-plus(O, O) is O
   nat-plus(O, one) is one
@@ -61,7 +64,10 @@ end
    that computes the product of two Nats (recall from 9/1 lecture). |#
 
 fun nat-mult(n :: Nat, m :: Nat) -> Nat:
-  ...
+  cases (Nat) n:
+    | O => O
+    | S(k) => nat-plus(m, nat-mult(k, m))
+  end
 where:
   nat-mult(O, three) is O
   nat-mult(two, O) is O
@@ -75,7 +81,10 @@ end
    ;). |#
 
 fun nat-fact(n :: Nat) -> Nat:
-  ...
+  cases (Nat) n:
+    | O => one
+    | S(k) => nat-mult(n, nat-fact(k))
+  end
 where:
   nat-fact(O) is one
   nat-fact(one) is one
@@ -95,7 +104,10 @@ end
    length yourself. |#
 
 fun my-len<T>(l :: List<T>) -> Nat:
-  ...
+  cases (List<T>) l:
+    | empty => O
+    | link(j, k) => S(my-len(k))
+  end
 where:
   my-len([list: 0]) is one
   my-len([list: ]) is O
@@ -112,7 +124,10 @@ end
    elements of the second list l2. |#
 
 fun my-append<T>(l1 :: List<T>, l2 :: List<T>) -> List<T>:
-  ...
+  cases (List<T>) l1:
+    | empty => l2
+    | link(j, k) => link(j, my-append(k, l2))
+  end
 where:
   my-append([list: ], [list: ]) is [list: ]
   my-append([list: ], [list: 1]) is [list: 1]
@@ -133,7 +148,10 @@ end
    correct structure of the list up to that point? |#
 
 fun knil<T>(a :: T, l :: List<T>) -> List<T>:
-  ...
+  cases (List<T>) l:
+    | empty => link(a, empty)
+    | link(j, k) => link(j, knil(a, k))
+  end
 where:
   knil(1, [list: 3, 2]) is [list: 3, 2, 1]
   knil(0, [list: ]) is [list: 0]
@@ -145,7 +163,10 @@ end
    my-rev([list: 1, 2, 3]) should result in [list: 3, 2, 1]. |#
 
 fun my-rev<T>(l :: List<T>) -> List<T>:
-  ...
+  cases (List<T>) l:
+    | empty => empty
+    | link(j, k) => knil(j, my-rev(k))
+  end
 where:
   my-rev([list: 1, 2, 3]) is [list: 3, 2, 1]
   my-rev([list: ]) is [list: ]
@@ -159,7 +180,10 @@ end
    [list: 2, 3]]) should result in the list [list: 1, 2, 3]. |#
 
 fun my-flatten<T>(l :: List<List<T>>) -> List<T>:
-  ...
+  cases (List<List<T>>) l:
+    |empty => empty
+    |link(j, k) => my-append(j, my-flatten(k))
+  end
 where: 
   my-flatten([list: [list: 1], [list: ], [list: 2, 3]]) is [list: 1, 2, 3]
   my-flatten([list: [list: ]]) is [list: ]
@@ -173,7 +197,20 @@ end
    algorithm to sort a list of numbers, of type List<Number>. |#
 
 fun isort(l :: List<Number>) -> List<Number>:
-  ...
+  fun insert(x :: Number, y :: List<Number>) -> List<Number>:
+    cases (List<Number>) y:
+      | empty => link(x, empty)
+      | link(j, k) => if (x <= j):
+          link(x, insert(j, k))
+        else:
+          link(j, insert(x, k))
+        end
+    end
+  end
+  cases (List<Number>) l:
+    |empty => empty
+    |link(j, k) => insert(j, isort(k))
+  end
 where: 
   isort([list: 3, 2, 1]) is [list: 1, 2, 3]
   isort([list:]) is [list:]
