@@ -1,8 +1,8 @@
 #| 0. Write your name and OU ID (the part before the
    "@" in your email address) below:
   
-   NAME: 
-   ID:
+   NAME: Alex Williams
+   ID: aw348916
 |#
 
 #| 1. (3 pts) Define a function 'eucl-dist' that returns the Euclidean
@@ -22,7 +22,7 @@
    and therefore can't safely be compared for exact equality). |#
 
 fun eucl-dist(x1 :: Number, y1 :: Number, x2 :: Number, y2 :: Number) -> Number:
-  ... # FILL IN HERE (replace the '...')
+  num-sqrt(num-sqr(y2 - y1) + num-sqr(x2 - x1))
 where:
   eucl-dist(0, 0, 0, 0) is-roughly 0
   eucl-dist(1, 1, 1, 1) is-roughly 0
@@ -42,7 +42,15 @@ end
    "true" and "false". |#
 
 fun bool-and(b1 :: Boolean, b2 :: Boolean) -> Boolean:
-  ... # FILL IN HERE
+  if b1:
+    if b2:
+      true
+    else:
+      false
+    end
+  else:
+    false
+  end
 where:
   bool-and(false, false) is false
   bool-and(false, true) is false
@@ -51,7 +59,11 @@ where:
 end
 
 fun bool-or(b1 :: Boolean, b2 :: Boolean) -> Boolean:
-  ... # FILL IN HERE
+  if b1:
+    true
+  else:
+    b2
+  end
 where:
   bool-or(false, false) is false
   bool-or(false, true) is true
@@ -68,7 +80,7 @@ end
    test cases in the check block. |#
 
 fun maj(b1 :: Boolean, b2 :: Boolean, b3 :: Boolean) -> Boolean:
-  ... # FILL IN HERE
+  bool-or(bool-or(bool-and(b1, b2), bool-and(b2, b3)), bool-and(b1, b3))
 where:
   maj(false, false, false) is false
   maj(false, false, true) is false
@@ -85,9 +97,11 @@ end
    solutions to this exercise. |#
 
 fun hello-world() -> String:
-  s1 = "hello"
-  s2 = "world :-(" 
-  s1 + s2 # recall that "+" is string concatenation
+  s1 = "hello\n"
+  s2 = " "
+  s3 = "\"world\""
+  s4 = "!! :-)"
+  s1 + s2 + s3 + s4 # recall that "+" is string concatenation
 where:
   hello-world() is "hello\n" + " " + "\"world\"" + "!! :-)"
 end
@@ -106,7 +120,13 @@ end
 |#
 
 fun fib(n :: NumNonNegative) -> NumNonNegative:
-  ... # FILL IN HERE
+  if (n == 0):
+    0
+  else if (n == 1):
+    1
+  else:
+    fib(n - 2) + fib(n - 1)
+  end
 where:
   range(0, 13).map(fib) is [list: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144]
 end
