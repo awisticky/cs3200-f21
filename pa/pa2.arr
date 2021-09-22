@@ -1,8 +1,8 @@
 #| 0. Write your name and OU ID (the part before the
    "@" in your email address) below:
 
-   NAME:
-   ID:
+   NAME: Alex Williams
+   ID: aw348916
 |#
 
 ############################
@@ -13,7 +13,7 @@
    returns the result of applying f to a twice. |#
 
 fun my-twice<T>(f :: (T -> T), a :: T) -> T:
-  ...
+  f(f(a))
 where:
   my-twice(lam(x): x + 2 end, 3) is 7
   my-twice(lam(x): x end, false) is false
@@ -25,7 +25,10 @@ end
    returns the result of applying f twice to each value in the list. |#
 
 fun my-maptwice<T>(f :: (T -> T), l :: List<T>) -> List<T>:
-  ...
+  cases (List<T>) l:
+    | empty => empty
+    | link(j, k) => link(my-twice(f, j), my-maptwice(f, k))
+  end
 where:
   my-maptwice(lam(x :: Number): x + 2 end, [list: 1, 2, 3]) is [list: 5, 6, 7]
   my-maptwice(lam(x :: Number): x - 1 end, [list: ]) is [list: ]
@@ -51,7 +54,10 @@ end
    leaves (NOTE: NOT the total number of nodes!) in a given BTree. |#
 
 fun num-leaves<A>(b :: BTree<A>) -> Number:
-  ...
+  cases (BTree<A>) b:
+    | leaf(z) => 1
+    | node(l, r) => num-leaves(l) + num-leaves(r)
+  end
 where:
   num-leaves(leaf(3)) is 1
   num-leaves(node(leaf(3), leaf(4))) is 2
@@ -63,7 +69,10 @@ end
    number of nodes (link nodes and leaves) in a BTree. |#
 
 fun num-nodes<A>(b :: BTree<A>) -> Number:
-  ...
+  cases (BTree<A>) b:
+    | leaf(z) => 1
+    | node(l, r) => num-nodes(l) + num-nodes(r) + 1
+  end
 where:
   num-nodes(leaf(3)) is 1
   num-nodes(node(leaf(3), leaf(4))) is 3
@@ -75,7 +84,10 @@ end
    a given BTree<Number> contains a particular number n. |#
 
 fun contains(b :: BTree<Number>, n :: Number) -> Boolean:
-  ...
+  cases (BTree<Number>) b:
+    | leaf(z) => z == n
+    | node(l, r) => contains(l, n) or contains(r, n)
+  end
 where:
   contains(leaf(3), 2) is false
   contains(leaf(3), 3) is true
@@ -94,7 +106,10 @@ end
    (https://www.pyret.org/docs/latest/numbers.html#%28part._numbers_num-max%29) |#
 
 fun height<A>(b :: BTree<A>) -> Number:
-  ...
+  cases (BTree<A>) b:
+    | leaf(z) => 0
+    | node(l, r) => 1 + num-max(height(l),height(r))
+  end
 where:
   height(leaf(5)) is 0
   height(node(leaf(3), leaf(4))) is 1
@@ -111,7 +126,10 @@ end
    'height' function from problem #4 to be useful. |#
 
 fun is-perfect<A>(b :: BTree<A>) -> Boolean:
-  ...
+  cases (BTree<A>) b:
+    | leaf(z) => true
+    | node(l, r) => is-perfect(l) and is-perfect(r) and (height(l) == height(r))
+  end
 where:
   leaf(4) satisfies is-perfect
   node(leaf(4), node(leaf(3), leaf(5))) violates is-perfect
@@ -148,7 +166,11 @@ end
 |#
 
 fun eval(e :: Exp) -> Number:
-  ...
+  cases (Exp) e:
+    | ENum(i) => i
+    | EPlus(o, p) => eval(o) + eval(p)
+    | EDiv(c, d) => eval(c) / eval(d)
+  end
 where:
   eval(ENum(5)) is 5
   eval(EPlus(ENum(5), ENum(6))) is 11
@@ -192,7 +214,12 @@ end
 |#
 
 fun veval(env :: Env, e :: VExp) -> Number:
-  ...
+  cases (VExp) e:
+    | VVar(s) => env(s)
+    | VNum(q) => q
+    | VPlus(o, p) => veval(env, o) + veval(env, p)
+    | VDiv(c, d) => veval(env, c) / veval(env, d)
+  end
 where:
   # Previous tests should still pass under the empty environment.
   veval(init-env, VNum(5)) is 5
