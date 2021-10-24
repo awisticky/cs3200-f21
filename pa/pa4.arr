@@ -3,8 +3,8 @@ import s-exp as S
 #| 0. Write your name and OU ID (the part before the
    "@" in your email address) below:
 
-   NAME:
-   ID:
+   NAME: Alex Williams
+   ID: aw348916
 |#
 
 #########################
@@ -83,6 +83,10 @@ fun seq2<A, B, C>(x :: Result<A>, y :: Result<B>, k :: (A, B -> Result<C>)) -> R
   seq(x, lam(a): seq(y, lam(b): k(a, b) end) end)
 end
 
+fun seq3<A, B, C, D>(x :: Result<A>, y :: Result<B>, z :: Result<C>, k :: (A, B, C -> Result<D>)) -> Result<D>:
+  seq(x, lam(a): seq(y, lam(b): seq(z, lam(c): k(a, b, c) end) end) end)
+end
+
 # Parallel composition.
 fun plus<A>(x :: Result<A>, y :: Result<A>) -> Result<A>:
   cases (Result) x:
@@ -99,6 +103,10 @@ end
 # Lift a function of two arguments to the Result type.
 fun lift2<A, B, C>(f :: (A, B -> C)) -> (Result<A>, Result<B> -> Result<C>):
   lam(x, y): seq2(x, y, lam(a, b): ok(f(a, b)) end) end
+end
+
+fun lift3<A, B, C, D>(f :: (A, B, C -> D)) -> (Result<A>, Result<B>, Result<C> -> Result<D>):
+  lam(x, y, z): seq3(x, y, z, lam(a, b, c): ok(f(a, b, c)) end) end
 end
 
 # END Result type code
@@ -266,25 +274,81 @@ end
 
 # Parse a number value.
 fun parseNum(s :: Sexp) -> Result<Val>:
-  ... # Fill in here
+  cases (Sexp) s:
+    | s-num(n) => ok(num(n))
+    | else => err(ParseError("parseNum"))
+  end
+end
+
+#Parse a Boolean
+fun parseBool(s :: Sexp) -> Result<Val>:
+  cases (Sexp) s:
+    | s-sym(v) =>
+      if eq(v, "true"): ok(bool(true))
+      else if eq(v, "false"): ok(bool(false))
+      else: err(ParseError("parseBool"))
+      end
+    | else => err(ParseError("parseBool"))
+  end
 end
 
 # Parse a value.
 fun parseVal(s :: Sexp) -> Result<Val>:
   choice([list:
       parseNum(s),
-      ... # Fill in here
+      parseUnexp(s),
+      parseBool(s)
     ], ParseError("parseVal"))
 end
 
 # Parse an identifier.
 fun parseIdent(s :: Sexp) -> Result<String>:
-  ... # Fill in here
+  cases (Sexp) s:
+    | s-str(w) => ok(w)
+    | else => err(ParseError("parseIdent"))
+  end
 end
 
 # Parse a unary expression.
 fun parseUnexp(s :: Sexp) -> Result<Exp>:
-  ... # Fill in here
+  cases (Sexp) s:
+    | s-list(l) =>
+      if eq(l.length(), 2):
+        lift2(unexp)(parseUnop(l.get(0)), parseExp(l.get(1)))
+      else:
+        err(ParseError("parseUnexp"))
+      end
+    | else => err(ParseError("parseUnexp"))
+  end
+end
+
+#Parse a binary operator
+fun parseBinop(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-sym(j) =>
+      if eq(j, '+'): ok(add)
+      else if eq(j, '-'): ok(sub)
+      else if eq(j, '*'): ok(mul)
+      else if eq(j, '/'): ok(div)
+      else if eq(j, '='): ok(equ)
+      else if eq(j, '<'): ok(lt)
+      else: err(ParseError("parseBinop"))
+      end
+    | else => err(ParseError("parseBinop"))
+  end
+end
+
+#Parse a binary expression
+fun parseBinexp(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-list(l) =>
+      if eq(l.length(), 3):
+        lift3(binexp)(parseBinop(l.get(0)), parseExp(l.get(1)), parseExp(l.get(2)))
+      else:
+        err(ParseError("parseBinexp"))
+      end
+    | else => err(ParseError("parseBinexp"))
+  end
 end
 
 # Convert an s-expression to a Scheme0 Core expression.
@@ -293,7 +357,8 @@ fun parseExp(s :: Sexp) -> Result<Exp>:
       fmap(val, parseVal(s)),
       fmap(ident, parseIdent(s)),
       parseUnexp(s),
-      ... # Fill in here
+      parseBinexp(s),
+      parseBinop(s)
     ], ParseError("parseExp"))
 end
 
