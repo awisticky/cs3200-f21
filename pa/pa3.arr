@@ -1,8 +1,8 @@
 #| 0. Write your name and OU ID (the part before the
    "@" in your email address) below:
 
-   NAME:
-   ID:
+   NAME: Alex Williams
+   ID: aw348916
 |#
 
 # I highly recommend using this equality function instead of the '=='
@@ -158,7 +158,13 @@ end
    binary search tree invariant as expressed in function bst-inv. |#
 
 fun bst-lookup(n :: Number, t :: BST) -> Boolean:
-  ... # Fill in here
+  cases (BST) t:
+    | bst-leaf => false
+    | bst-node(x, l, r) =>
+      if n == x: true
+      else: bst-lookup(n, l) or bst-lookup(n, r)
+      end
+  end
 where:
   bst-lookup(3, bst-leaf) is false
   bst-lookup(2, b1) is false
@@ -184,7 +190,14 @@ end
    bst-insert function should leave the tree unchanged. |#
 
 fun bst-insert(n :: Number, t :: BST) -> BST:
-  ... # Fill in here
+  cases (BST) t:
+    | bst-leaf => bst-node(n, bst-leaf, bst-leaf)
+    | bst-node(x, l, r) =>
+      if n == x: t
+      else if n < x: bst-node(x, bst-insert(n, l), r)
+      else if n > x: bst-node(x, l, bst-insert(n, r))
+      end
+  end
 where:
   bst-insert(3, bst-leaf) satisfies bst-inv
   bst-insert(1, b1) satisfies bst-inv
@@ -296,7 +309,70 @@ r8 = rbt-node(black, 1,
 # END RBTrees used for testing
 
 fun rbt-inv(t :: RBTree<Number>) -> Boolean:
-  ... # Fill in here
+  fun is-blk(s :: RBTree<Number>) -> Boolean:
+    cases (RBTree) s: 
+      | rbt-leaf(b) => (b == black)
+      | rbt-node(c, v, l, r) => (c == black)
+    end
+  end
+
+    # -1 if violates rule iv, else num black elements in path to node
+  fun blk-path(e :: RBTree<Number>) -> Number:
+    cases (RBTree) e:
+      | rbt-leaf(b) => if b == black: 1 else: 0 end
+      | rbt-node(c, v, l, r) =>
+        pathl = blk-path(l)
+        pathr = blk-path(r)
+        if (pathl == -1) or (pathr == -1): -1
+        else if (pathl == 0) and (pathr == 0): 0
+        else if (pathl == pathr):
+          if c == black:
+            pathl + 1
+          else:
+            pathl
+          end
+        else: -1 end
+    end
+  end
+  fun rbt-rec(x :: RBTree<Number>) -> Boolean:
+    # checks condition iv
+    if blk-path(x) == -1: false
+    # checks condition v
+    else if not(rbt-in(x)): false
+    else:
+      # checks conditions 1-3
+      cases (RBTree) x:
+          # condition i
+        | rbt-leaf(b) => (b == black)
+          # condition iii
+        | rbt-node(c, v, l, r) =>
+          if (c == red) and not(is-blk(l) and is-blk(r)):
+            false
+          else:
+            (rbt-rec(l) and rbt-rec(r))
+          end
+      end
+    end
+  end
+  fun rbt-all(f :: (Number -> Boolean), y :: RBTree<Number>) -> Boolean:
+    cases (RBTree) y:
+      | rbt-leaf(a) => true
+      | rbt-node(c, n, l, r) => f(n) and rbt-all(f, l) and rbt-all(f, r)
+    end
+  end
+  fun rbt-in(b :: RBTree<Number>) -> Boolean:
+    cases(RBTree) b:
+      | rbt-leaf(a) => true
+      | rbt-node(c, v, l, r) =>
+        rbt-in(l) and
+        rbt-in(r) and
+        rbt-all(lam(n): n < v end, l) and
+        rbt-all(lam(n): n > v end, r)
+    end
+  end
+  # checks if top element is black, calls recursive to check if valid tree
+  (is-blk(t) and rbt-rec(t))
+  
 where:
   r1 satisfies rbt-inv
   r2 violates rbt-inv
@@ -384,7 +460,10 @@ pi-sequence :: Stream<Number> = lz-map(lam(k):
 |#
 
 fun stream-sums(s :: Stream<Number>) -> Stream<Number>:
-  ... # Fill in here
+  fun running-total(n :: Number, ss :: Stream<Number>) -> Stream<Number>:
+    lz-link(n + lz-first(ss), lam(): running-total(n + lz-first(ss), lz-rest(ss)) end)
+  end
+  running-total(0, s)
 where:
   prefix(5, stream-sums(nats)) is [list: 0, 1, 3, 6, 10]
   prefix(5, stream-sums(stream-sums(nats))) is [list: 0, 1, 4, 10, 20]
@@ -410,7 +489,14 @@ end
 |#
 
 fun approximate(tolerance :: Number, s :: Stream<Number>) -> Number:
-  ... # Fill in here
+  fun within-err(tol :: Number, n :: Number, ss :: Stream<Number>) -> Number:
+    if num-within-abs(tol)(lz-first(ss), n):
+      lz-first(ss)
+    else:
+      within-err(tol, lz-first(ss), lz-rest(ss))
+    end
+  end
+  within-err(tolerance, lz-first(s), lz-rest(s))
 where:
   # The stream of partial sums of pi-sequence (converges to π).
   pi-series = stream-sums(pi-sequence)
@@ -450,7 +536,23 @@ end
 #| 6. (3 pts) Rewrite the evaluator from PA2 using the Result type. |#
 
 fun eval(env :: Env, e :: Exp) -> Result<Number>:
-  ... # Fill in here
+  fun to-num(p :: Result<Number>) -> Number:
+    cases (Result) p:
+      | ok(m) => m
+      | else => 0
+    end
+  end
+  cases (Exp) e:
+    | Var(x) => env(x)
+    | Num(m) => ok(m)
+    | Plus(l, r) => eval(env, Num(to-num(eval(env, l)) + to-num(eval(env, r))))
+    | Div(n, d) =>
+      if to-num(eval(env, d)) == 0:
+        err("division by zero")
+      else:
+        ok(to-num(eval(env, n)) / to-num(eval(env, d)))
+      end
+  end
 where:
   eval(init-env, Num(5)) is ok(5)
   eval(init-env, Plus(Num(5), Num(6))) is ok(11)
