@@ -101,6 +101,10 @@ fun choice<A>(l :: List<Result<A>>, e :: Error) -> Result<A>:
 end
 
 # Lift a function of two arguments to the Result type.
+fun lift<A, B>(f :: (A -> B)) -> (Result<A> -> Result<B>):
+  lam(x): seq(x, lam(a): ok(f(a)) end) end
+end
+
 fun lift2<A, B, C>(f :: (A, B -> C)) -> (Result<A>, Result<B> -> Result<C>):
   lam(x, y): seq2(x, y, lam(a, b): ok(f(a, b)) end) end
 end
@@ -303,9 +307,29 @@ end
 
 # Parse an identifier.
 fun parseIdent(s :: Sexp) -> Result<String>:
-  cases (Sexp) s:
-    | s-str(w) => ok(w)
-    | else => err(ParseError("parseIdent"))
+  cases (Result) parseUnop(s):
+    | err(m) => 
+      cases (Result) parseBinop(s):
+        | err(n) =>
+          cases (Result) parseBool(s):
+            | err(o) =>
+              cases (Result) parseITE(s):
+                | err(p) =>
+                  cases (Result) parseLet(s):
+                    | err(q) =>
+                      cases (Sexp) s:
+                        | s-sym(r) => ok(r)
+                        | else => err(ParseError('parseIdent'))
+                      end
+                    | else => err(ParseError('parseIdent'))
+                  end
+                | else => err(ParseError('parseIdent'))
+              end
+            | else => err(ParseError('parseIdent'))
+          end
+        | else => err(ParseError('parseIdent'))
+      end
+    | else => err(ParseError('parseIdent'))
   end
 end
 
@@ -351,6 +375,40 @@ fun parseBinexp(s :: Sexp) -> Result<Exp>:
   end
 end
 
+fun parseLet(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-list(l) =>
+      if eq(l.length(), 4):
+        if l.get(0) == 'let':
+          lift3(letx)(lift(ok)(parseIdent(l.get(1))), parseExp(l.get(2)), parseExp(l.get(3)))
+        else: err(ParseError('parseLet'))
+        end
+      else:
+        err(ParseError('parseLet'))
+      end
+    | else => err(ParseError('parseLet'))
+  end
+end
+
+fun parseITE(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-list(l) =>
+      if eq(l.length(), 4):
+        if l.get(0) == 'if':
+          cases (Result) parseBool(l.get(1)):
+            | ok(b) => lift3(ite)(parseExp(l.get(1)), parseExp(l.get(2)), parseExp(l.get(3)))
+            | else => err(ParseError('parseITE'))
+          end
+        else:
+          err(ParseError('parseITE'))
+        end
+      else:
+        err(ParseError('parseITE'))
+      end
+    | else => err(ParseError('parseITE'))
+  end
+end
+
 # Convert an s-expression to a Scheme0 Core expression.
 fun parseExp(s :: Sexp) -> Result<Exp>:
   choice([list:
@@ -358,7 +416,9 @@ fun parseExp(s :: Sexp) -> Result<Exp>:
       fmap(ident, parseIdent(s)),
       parseUnexp(s),
       parseBinexp(s),
-      parseBinop(s)
+      parseBinop(s),
+      parseIdent(s),
+      parseLet(s)
     ], ParseError("parseExp"))
 end
 
@@ -443,9 +503,141 @@ end
 
 # Evaluate an expression under a given environment, producing a value.
 fun interp(rho :: Env, e :: Exp) -> Result<Val>:
-  ... # Fill in here
+  cases (Exp) e:
+    | val(v) => ok(v)
+    | ident(i) => rho(i)
+    | unexp(u, a) =>
+      cases (Result) seq(interp(rho, a), val-bool):
+        | err(r) => err(r)
+        | else => seq(seq(interp(rho, a), val-bool), val-not)
+      end
+    | binexp(b, c, d) =>
+      cases (Result) interp(rho, c):
+          | err(r) => err(r)
+        | else =>
+          cases (Result) interp(rho, d):
+            | err(r) => err(r)
+            | else =>
+              cases (Binop) b:
+                | add => seq2(interp(rho, c), interp(rho, d), val-add)
+                | sub => seq2(interp(rho, c), interp(rho, d), val-sub)
+                | mul => seq2(interp(rho, c), interp(rho, d), val-mul)
+                | div => seq2(interp(rho, c), interp(rho, d), val-div)
+                | equ => seq2(interp(rho, c), interp(rho, d), val-equ)
+                | lt => seq2(interp(rho, c), interp(rho, d), val-lt)
+              end
+          end
+      end
+    | ite(f, t, l) =>
+      cases (Result) seq(interp(rho, f), val-bool):
+        | err(r) => err(r)
+        | else => 
+          if eq(interp(rho, f), ok(bool(true))):
+            interp(rho, t)
+          else:
+            interp(rho, l)
+          end
+      end
+    | letx(s, x, y) =>
+      cases (Result) interp(rho, y):
+        | err(r) => err(r)
+        | else =>
+          cases (Result) interp(rho, y):
+            | err(r) => err(r)
+            | else => err(InterpError('err'))
+          end
+      end
+  end
 end
 
+fun val-lt(a :: Val, b :: Val) -> Result<Val>:
+  cases (Val) a:
+    | bool(x) =>
+      cases (Val) b:
+        | bool(y) => ok(bool(x < y))
+        | else => err(InterpError('binLtError'))
+      end
+    | else => err(InterpError('binLtError'))
+  end
+end
+
+fun val-add(a :: Val, b :: Val) -> Result<Val>:
+  cases (Val) a:
+    | num(x) =>
+      cases (Val) b:
+        | num(y) => ok(num(x + y))
+        | else => err(InterpError('binAddError'))
+      end
+    | else => err(InterpError('binAddError'))
+  end
+end
+
+fun val-sub(a :: Val, b :: Val) -> Result<Val>:
+  cases (Val) a:
+    | num(x) =>
+      cases (Val) b:
+        | num(y) => ok(num(x - y))
+        | else => err(InterpError('binSubError'))
+      end
+    | else => err(InterpError('binSubError'))
+  end
+end
+
+fun val-div(a :: Val, b :: Val) -> Result<Val>:
+  cases (Val) a:
+    | num(x) =>
+      cases (Val) b:
+        | num(y) => 
+          if eq(y, 0):
+            err(InterpError('divBy0'))
+          else:
+            ok(num(x / y))
+          end
+        | else => err(InterpError('binDivError'))
+      end
+    | else => err(InterpError('binDivError'))
+  end
+end
+
+fun val-mul(a :: Val, b :: Val) -> Result<Val>:
+  cases (Val) a:
+    | num(x) =>
+      cases (Val) b:
+        | num(y) => ok(num(x * y))
+        | else => err(InterpError('binMulError'))
+      end
+    | else => err(InterpError('binMulError'))
+  end
+end
+
+fun val-equ(a :: Val, b :: Val) -> Result<Val>:
+  cases (Val) a:
+    | bool(x) =>
+      cases (Val) b:
+        | bool(y) => ok(bool(eq(x, y)))
+        | else => err(InterpError('binEquError'))
+      end
+    | num(m) =>
+      cases (Val) b:
+        | num(n) => ok(bool(eq(m, n)))
+        | else => err(InterpError('binEquError'))
+      end
+  end
+end
+
+fun val-bool(a :: Val) -> Result<Val>:
+  cases (Val) a:
+    | bool(x) => ok(bool(x))
+    | else => err(InterpError('expected bool'))
+  end
+end
+
+fun val-not(a :: Val) -> Result<Val>:
+  cases (Val) a:
+    | bool(x) => ok(bool(not(x)))
+    | else => err(InterpError('expected bool'))
+  end
+end
 
 # End-to-end parser and interpreter.
 fun run(s :: String) -> Result<Val>:
