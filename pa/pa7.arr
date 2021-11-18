@@ -120,29 +120,27 @@ end
 #############################
 
 
-#| In this assignment, you'll be extending Scheme1 to Typed
-   Scheme1. In part 1, you'll extend the parser to support the
-   extended syntax given below (which includes types and 'rec'
-   expressions). In part 2, you'll update the desugarer to account for
-   the syntax extensions from part 1. In part 3, you'll implement a
-   typechecker!
+#| In this assignment, you'll be extending Typed Scheme1 to Scheme2 by
+   adding support for products, sums, and lists. You'll have to update
+   all parts of the pipeline: parser, desugarer (not much to do here),
+   typechecker, and interpreter.
 
-   Note that our old trick for encoding recursion no longer works once
-   we add a type system (try to recreate the 'omega' example from PA5
-   in the new typed language -- it won't be typeable!), so to maintain
-   support for recursive computations, we must add a new
-   syntactic form to the core language for recursive bindings. An
-   expression of the form '(rec x t e)' should be understood as "let x
-   stand for recursive occurrences of e in e, where e (and thus x as
-   well) has type t".
+   See the extended syntax below. The evaluation and typing relations
+   can be found at the following locations. Let them guide your
+   implementation.
 
-   Thus, in part 4, you must extend the interpreter to support
-   recursive expressions. Good luck!
+   https://github.com/OUPL/cs3200-f21/blob/master/doc/scheme2_bigstep.pdf
+   https://github.com/OUPL/cs3200-f21/blob/master/doc/scheme2_typing.pdf
+
+   All new test cases are at the end of this file.
 
    Types
    t ::= bool
        | num
        | (-> t1 t2)
+       | (* t1 t2)     # NEW: product
+       | (+ t1 t2)     # NEW: sum
+       | (list t)      # NEW: list
    
    Unary Operators
    u ::= not           # negate a boolean
@@ -172,23 +170,29 @@ end
        | (let x t e2 e3) # let expression (derived)
        | (fun x t e)     # anonymous function with parameter x of type t and body e
        | (e1 e2)         # function application (e1 applied to argument e2)
-       | (rec x t e)     # NEW: recursive definition. let x stand for recursive occurrences in e.
+       | (rec x t e)     # recursive definition. let x stand for recursive occurrences in e.
+   
+                         # NEW:
+       | (pair e1 e2)    # pair constructor
+       | (fst e)         # first projection
+       | (snd e)         # second projection
+       | (inl T2 e1)     # left injection into sum type (+ T1 T2) where e1 : T1
+       | (inr T1 e2)     # right injection into sum type (+ T1 T2) where e2 : T2
+       | (case e1 e2 e3) # case analysis on sum
+       | (nil T)         # empty list of type (list T)
+       | (cons e1 e2)    # cons cell with head e1 and tail e2 (like 'link' in Pyret)
+       | (fold e1 e2 e3) # right-associative fold on list e1
 |#
 
-
-#| (5 pts) Part 1: Typed Scheme1 Parser
-
-   Extend the Scheme1 parser to parse types (now included in type
-   annotations on 'let', 'fun', and 'rec' expressions) as well as
-   'rec' expressions.
-|#
-
-#| Scheme1 Abstract Syntax |#
+#| Scheme2 Abstract Syntax |#
 
 data Type:
   | tbool
   | tnum
   | tarrow(t1 :: Type, t2 :: Type)
+  | tpair(t1 :: Type, t2 :: Type)
+  | tsum(t1 :: Type, t2 :: Type)
+  | tlist(t :: Type)
 end
 
 data Unop:
@@ -210,8 +214,12 @@ end
 data Val:
   | bool(b :: Boolean)
   | num(n :: Number)
-    # closures are created by the interpreter and don't appear in source programs.
   | clos(env :: Env<Exp>, x :: String, body :: Exp)
+  | vpair(v1 :: Val, v2 :: Val)
+  | vinl(v1 :: Val)
+  | vinr(v2 :: Val)
+  | vnil
+  | vcons(hd :: Val, tl :: Val)
 end
 
 data Exp:
@@ -224,8 +232,17 @@ data Exp:
   | fn(x :: String, t :: Type, body :: Exp)
   | app(e1 :: Exp, e2 :: Exp)
   | recx(x :: String, t :: Type, e :: Exp)
+  | pair(e1 :: Exp, e2 :: Exp)
+  | fst(e :: Exp)
+  | snd(e :: Exp)
+  | inl(t2 :: Type, e1 :: Exp)
+  | inr(t1 :: Type, e2 :: Exp)
+  | casex(e1 :: Exp, e2 :: Exp, e3 :: Exp)
+  | nil(t :: Type)
+  | cons(e1 :: Exp, e2 :: Exp)
+  | foldr(e1 :: Exp, e2 :: Exp, e3 :: Exp)
 end
-    
+
 # A couple helper functions for binops.
 fun is-bool-binop(b :: Binop) -> Boolean:
   cases (Binop) b:
@@ -257,13 +274,22 @@ fun is-core(e :: Exp) -> Boolean:
     | fn(_, _, e1) => is-core(e1)
     | app(e1, e2) => is-core(e1) and is-core(e2)
     | recx(_, _, e1) => is-core(e1)
+    | pair(e1, e2) => is-core(e1) and is-core(e2)
+    | fst(e1) => is-core(e1)
+    | snd(e1) => is-core(e1)
+    | inl(_, e1) => is-core(e1)
+    | inr(_, e2) => is-core(e2)
+    | casex(e1, e2, e3) => is-core(e1) and is-core(e2) and is-core(e3)
+    | nil(_) => true
+    | cons(e1, e2) => is-core(e1) and is-core(e2)
+    | foldr(e1, e2, e3) => is-core(e1) and is-core(e2) and is-core(e3)
   end
 end
 
 # The core language is the subset of the source language that satisfies is-core.
 type ExpC = Exp%(is-core)
 
-#| END Scheme1 Abstract Syntax |#
+#| END Scheme2 Abstract Syntax |#
 
 # Example expressions
 ex0 = ident("x")
@@ -310,6 +336,7 @@ ex65 = app(ex60, val(bool(true)))
 ex66 = app(ex53, val(num(3)))
 ex67 = app(ex66, val(num(5)))
 ex68 = app(app(ex53, val(num(1))), val(bool(true)))
+
 # Ω = (λx. x x) (λx. x x) NO LONGER TYPE-ABLE, but should still parse
 Omega = app(fn("x", tarrow(tnum, tnum), app(ident("x"), ident("x"))),
   fn("x", tarrow(tnum, tnum), app(ident("x"), ident("x"))))
@@ -323,12 +350,12 @@ nat-mult = recx("mult", tarrow(tnum, tarrow(tnum, tnum)),
         binexp(add, ident("m"), app(app(ident("mult"), ident("m")),
             binexp(sub, ident("n"), val(num(1)))))))))
 
-# Type synonym for the s-expression type.
+# Type synonym fro the s-expression type.
 type Sexp = S.S-Exp
 
-# Convert an s-expression to a Typed Scheme1 expression.
+# Convert an s-expression to a Scheme2 expression.
 fun parseExp(s :: Sexp) -> Result<Exp>:
-  ... # Fill in here (start by copying over your parsing code from PA5)
+  ... # Fill in here
 end
 
 # The overall parser is the composition of parseExp with S.read-s-exp.
@@ -407,16 +434,9 @@ where:
   parse("(rec mult (-> num (-> num num)) (fun m num (fun n num (if (= n 0) 0 (+ m ((mult m) (- n 1)))))))") is ok(nat-mult)
 end
 
-
-#| (2 pts) Part 2: Typed Scheme1 Desugarer
-
-   Now, extend the desugarer to account for the new syntax. There
-   isn't much to do here since the syntax extensions are fairly
-   trivial.
-|#
-
+# Scheme2 Desugarer
 fun desugar(e :: Exp) -> ExpC:
-  ... # Fill in here (start by copying over your desugarer code from PA5)
+  ... # Fill in here
 end
 
 check "desugar(...)":
@@ -451,25 +471,11 @@ fun upd<A>(e :: Env<A>, x :: String, new-a :: A) -> Env<A>:
 end
 
 
-#| (10 pts) Part 3: Scheme1 Core Typechecker
-
-   Now, it's time to implement a typechecker for Scheme1 Core! Write
-   a function 'tycheck' that computes the type of a Scheme1 Core
-   expression under a given typing context (or producing an error if
-   the expression is not typeable).
-
-   Refer to the typing relation document at
-   https://github.com/OUPL/cs3200-f21/blob/master/doc/scheme1_core_typing.pdf for
-   the typing rules. Recall that the Greek letter Γ (capital "gamma")
-   stands for the typing context, and the notation "Γ, x:T" stands for
-   Γ updated with a new binding that maps variable x to type T.
-
-|#
+#| Scheme2 Core Typechecker |#
 
 # The initial type environment (the typing context) contains no bindings.
 init-ctx :: Env<Type> = env(lam(x :: String): err(TypeError(x + " is unbound")) end)
 
-# Typecheck a Scheme1 Core expression under typing context gamma.
 fun tycheck(gamma :: Env<Type>, e :: Exp) -> Result<Type>:
   ... # Fill in here
 end
@@ -523,17 +529,12 @@ check "tycheck(..)":
   tycheck(init-ctx, desugar(nat-mult)) is ok(tarrow(tnum, tarrow(tnum, tnum)))
 end
 
-#| Part 4 (3 pts) Scheme1 Core interpreter
 
-   Lastly, you must extend the interpreter to support recursive
-   definitions. You can consult the bigstep semantics document at
-   https://github.com/OUPL/cs3200-f21/blob/master/doc/scheme1_core_bigstep.pdf
-   to see how it should be done.
-|#
+#| Scheme2 Core interpreter |#
 
 # Evaluate an expression under a given environment, producing a value.
 fun interp(rho :: Env<Exp>, e :: ExpC) -> Result<Val>:
-  ... # Fill in here (start by copying over your interpreter code from PA5)
+  ... # Fill in here
 end
 
 # The initial variable environment contains no bindings.
@@ -631,5 +632,71 @@ check "run(...)":
   run("(((fun m num (fun n num (/ m n))) 10) 5)") is ok(num(2))
   run("(((fun m num (fun n num (/ m n))) 10) (- 1 1))") satisfies is-interp-error # division by zero
   run("(let f (-> num num) (rec f (-> num num) (fun n num (if (< n 1) 0 (+ n (f (- n 1)))))) (f 10))") is ok(num(55))
-  # Add your own test cases here.
+
+  # Pairs (6 pts)
+  run("(pair 1 2)") is ok(vpair(num(1), num(2)))
+  run("(pair (+ 1 2) 2)") is ok(vpair(num(3), num(2)))
+  run("(fst (pair (+ 1 2) 2))") is ok(num(3))
+  run("(snd (pair (+ 1 2) 2))") is ok(num(2))
+  run("(pair 1 (pair false (nil num)))") is ok(vpair(num(1), vpair(bool(false), vnil)))
+  run("(fst (pair 1 (pair false (nil num))))") is ok(num(1))
+  run("(snd (pair 1 (pair false (nil num))))") is ok(vpair(bool(false), vnil))
+  run("(fst (snd (pair 1 (pair false (nil num)))))") is ok(bool(false))
+  run("(snd (snd (pair 1 (pair false (nil num)))))") is ok(vnil)
+  run("(let p (* (list bool) bool) (pair (nil bool) true) (fst p))") is ok(vnil)
+
+  # Sums (8 pts)
+  run("(inl (-> num num) (and true false))") is ok(vinl(bool(false)))
+  run("(inr bool 123)") is ok(vinr(num(123)))
+  run("(let x (+ num (-> num num)) (inl (-> num num) (and true false)) (case x (fun l bool l) (fun f (-> num num) (< 0 (f 0)))))") satisfies is-type-error
+  run("(let x (+ bool (-> num num)) (inl num (and true false)) (case x (fun l bool l) (fun f (-> num num) (< 0 (f 0)))))") satisfies is-type-error
+  run("(let x (+ bool (-> num num)) (inl (-> num num) 0) (case x (fun l bool l) (fun f (-> num num) (< 0 (f 0)))))") satisfies is-type-error
+  run("(let x (+ bool (-> num num)) (inl (-> num num) (and true false)) (case x (fun l num false) (fun f (-> num num) (< 0 (f 0)))))") satisfies is-type-error
+  run("(let x (+ bool (-> num num)) (inl (-> num num) (and true false)) (case x (fun l bool l) (fun f num (< 0 f))))") satisfies is-type-error
+  run("(let x (+ bool (-> num num)) (inl (-> num num) (and true false)) (case x (fun l bool l) (fun f (-> num num) (< 0 (f 0)))))") is ok(bool(false))
+  run("(let x (+ bool (-> num num)) (inr bool (fun n num (+ n 1))) (case x (fun l bool l) (fun f (-> num num) (< 0 (f 0)))))") is ok(bool(true))
+
+  # Lists (10 pts)
+  run("(nil num)") is ok(vnil)
+  run("(cons 1 false)") satisfies is-type-error
+  run("(cons 1 (nil bool))") satisfies is-type-error
+  run("(cons 1 (nil num))") is ok(vcons(num(1), vnil))
+  run("(cons 1 (cons true (nil num)))") satisfies is-type-error
+  run("(cons 1 (cons true (nil bool)))") satisfies is-type-error
+  run("(cons 1 (cons 2 (nil num)))") is ok(vcons(num(1), vcons(num(2), vnil)))
+  run("(cons false (cons true (nil num)))") satisfies is-type-error
+  run("(cons false (cons true (nil bool)))") is ok(vcons(bool(false), vcons(bool(true), vnil)))
+
+  run("(fold (cons 1 (cons 2 (nil num))) (fun n num (fun m bool n)) 0)") satisfies is-type-error
+  run("(fold (cons 1 (cons 2 (nil num))) (fun n bool (fun m num (+ m m))) 0)")
+    satisfies is-type-error
+  run("(fold (cons 1 (cons 2 (nil num))) (fun n num (fun m num (+ n m))) false)")
+    satisfies is-type-error
+  run("(fold (cons false (cons true (nil bool))) (fun n num (fun m num (+ n m))) 0)")
+    satisfies is-type-error
+  run("(fold (cons 1 (cons 2 (nil num))) (fun n num (fun m num (+ n m))) 0)") is ok(num(3))
+
+  # (let append (-> (list num) (-> (list num) (list num)))
+  #     (fun l1 (list num)
+	#         (fun l2 (list num)
+	#             (fold l1 (fun n num (fun l (list num) (cons n l))) l2)))
+  #             ((append (cons 1 (cons 2 (nil num)))) (cons 3 (cons 5 (nil num)))))
+  run("(let append (-> (list num) (-> (list num) (list num))) (fun l1 (list num) (fun l2 (list num) (fold l1 (fun n num (fun l (list num) (cons n l))) l2))) ((append (cons 1 (cons 2 (nil num)))) (cons 3 (cons 5 (nil num)))))") is ok(vcons(num(1), vcons(num(2), vcons(num(3), vcons(num(5), vnil)))))
+
+  # (let head (-> (list num) num)
+  #     (fun l (list num) (fold l (fun x num (fun y num x)) 0))
+  #           (head (cons 3 (nil num))))
+  run("(let head (-> (list num) num) (fun l (list num) (fold l (fun x num (fun y num x)) 0)) (head (cons 3 (nil num))))") is ok(num(3))
+  run("(let head (-> (list num) num) (fun l (list num) (fold l (fun x num (fun y num x)) 0)) (head (nil num)))") is ok(num(0))
+
+  # (let snoc (-> (list num) (-> num (list num)))
+  #     (fun l (list num)
+  #         (fun n num
+  #             (fold l (fun m num (fun tl (list num) (cons m tl)))
+  #                   (cons n (nil num)))))
+  #             ((snoc (cons 2 (cons 1 (nil num)))) 5))
+  run("(let snoc (-> (list num) (-> num (list num))) (fun l (list num) (fun n num (fold l (fun m num (fun tl (list num) (cons m tl))) (cons n (nil num))))) ((snoc (cons 2 (cons 1 (nil num)))) 5))") is ok(vcons(num(2), vcons(num(1), vcons(num(5), vnil))))
+
+  # Extra credit: write a 'rev' function in Scheme2 that reverses a
+  # list, and write some tests to ensure that it works correctly.
 end
