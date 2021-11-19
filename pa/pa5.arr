@@ -686,6 +686,13 @@ fun val-as-num2<A>(v1 :: Val, v2 :: Val, k :: (Number, Number -> Result<A>)) -> 
   val-as-num(v1, lam(n1): val-as-num(v2, lam(n2): k(n1, n2) end) end)
 end
 
+fun val-as-clos<A>(v :: Val, k :: (Env<Val>, String, Exp -> Result<A>)) -> Result<A>:
+  cases (Val) v:
+    | clos(cenv, x, body) => k(cenv, x, body)
+    | else => err(InterpError("val-as-clos"))
+  end
+end
+
 fun interpUnexp(rho :: Env, u :: Unop, e :: Exp) -> Result<Val>:
   seq(interp(rho, e), lam(v):
       val-as-bool(v, lam(b):
@@ -725,9 +732,15 @@ fun interpIf(rho :: Env, e1 :: Exp, e2 :: Exp, e3 :: Exp) -> Result<Val>:
     end)
 end
 
-fun interpLet(rho :: Env, x :: String, e1 :: Exp, e2 :: Exp) -> Result<Val>:
-  seq(interp(rho, e1), lam(v1):
-      interp(upd(rho, x, v1), e2)
+fun interpFun(rho :: Env<Val>, x :: String, body :: ExpC) -> Result<Val>:
+  ok(clos(rho, x, body))
+end
+
+fun interpApp(rho :: Env<Val>, e1 :: ExpC, e2 :: ExpC) -> Result<Val>:
+  seq2(interp(rho, e1), interp(rho, e2), lam(v1, v2):
+      val-as-clos(v1, lam(cenv, x, body):
+          interp(upd(cenv, x, v2), body)
+        end)
     end)
 end
 
@@ -739,9 +752,9 @@ fun interp(rho :: Env<Val>, e :: ExpC) -> Result<Val>:
     | unexp(u, e1) => interpUnexp(rho, u, e1)
     | binexp(b, e1, e2) => interpBinexp(rho, b, e1, e2)
     | ite(e1, e2, e3) => interpIf(rho, e1, e2, e3)
-    | letx(x, e1, e2) => interpLet(rho, x, e1, e2)
-    | fn(st, bd) => fn(st, interp(rho, bd))
-    | app(e1, e2) => err(InterpError("no app here"))
+    | letx(x, e1, e2) => err(InterpError("let should have been desugared"))
+    | fn(x, body) => interpFun(rho, x, body)
+    | app(e1, e2) => interpApp(rho, e1, e2)
   end
 end
 
