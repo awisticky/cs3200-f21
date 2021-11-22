@@ -1,10 +1,11 @@
+use context essentials2021
 import s-exp as S
 
 #| 0. Write your name and OU ID (the part before the
    "@" in your email address) below:
 
-   NAME:
-   ID:
+   NAME: Alex Williams
+   ID: aw348916
 |#
 
 #########################
@@ -96,6 +97,11 @@ fun seq3<A, B, C, D>(x :: Result<A>, y :: Result<B>, z :: Result<C>,
   seq(x, lam(a): seq(y, lam(b): seq(z, lam(c): k(a, b, c) end) end) end)
 end
 
+fun seq4<A, B, C, D, E>(w :: Result<A>, x :: Result<B>, y :: Result<C>, z :: Result<D>,
+    k :: (A, B, C, D -> Result<E>)) -> Result<E>:
+  seq(w, lam(a): seq(x, lam(b): seq(y, lam(c): seq(z, lam(d): k(a, b, c, d) end) end) end) end)
+end
+
 # Parallel composition.
 fun plus<A>(x :: Result<A>, y :: Result<A>) -> Result<A>:
   cases (Result) x:
@@ -109,11 +115,22 @@ fun choice<A>(l :: List<Result<A>>, e :: Error) -> Result<A>:
   l.foldr(plus, err(e))
 end
 
+fun lift<A, B>(f :: (A -> B)) -> (Result<A> -> Result<B>):
+  lam(x): seq(x, lam(a): ok(f(a)) end) end
+end
+
 # Lift a function of two arguments to the Result type.
 fun lift2<A, B, C>(f :: (A, B -> C)) -> (Result<A>, Result<B> -> Result<C>):
   lam(x, y): seq2(x, y, lam(a, b): ok(f(a, b)) end) end
 end
 
+fun lift3<A, B, C, D>(f :: (A, B, C -> D)) -> (Result<A>, Result<B>, Result<C> -> Result<D>):
+  lam(x, y, z): seq3(x, y, z, lam(a, b, c): ok(f(a, b, c)) end) end
+end
+
+fun lift4<A, B, C, D, E>(f :: (A, B, C, D -> E)) -> (Result<A>, Result<B>, Result<C>, Result<D> -> Result<E>):
+  lam(w, x, y, z): seq4(w, x, y, z, lam(a, b, c, d): ok(f(a, b, c, d)) end) end
+end
 # END Result type code
 
 #| END CS3200 LIBRARY CODE |#
@@ -326,9 +343,254 @@ nat-mult = recx("mult", tarrow(tnum, tarrow(tnum, tnum)),
 # Type synonym for the s-expression type.
 type Sexp = S.S-Exp
 
-# Convert an s-expression to a Typed Scheme1 expression.
+fun as-sym<A>(s :: Sexp) -> Result<String>:
+  cases (Sexp) s:
+    | s-sym(x) => ok(x)
+    | else => err(ParseError("expected symbol, got " + to-repr(s)))
+  end
+end
+
+fun sexp-as-num<A>(s :: Sexp) -> Result<Number>:
+  cases (Sexp) s:
+    | s-num(n) => ok(n)
+    | else => err(ParseError("expected number, got " + to-repr(s)))
+  end
+end
+
+fun as-list<A>(s :: Sexp, k :: (List<Sexp> -> Result<A>)) -> Result<A>:
+  cases (Sexp) s:
+    | s-list(l) => k(l)
+    | else => err(ParseError("expected list, got " + to-repr(s)))
+  end
+end
+
+fun assert<A, B>(s :: A, f :: (A -> Boolean), r :: ( -> Result<B>)) -> Result<B>:
+  if f(s): r() else: err(ParseError("assert")) end
+end
+
+fun sexp-assert<A>(s :: Sexp, expect :: Sexp, r :: Result<A>) -> Result<A>:
+  if s == expect:
+    r
+  else:
+    err(ParseError("expected " + to-repr(expect) + ", got " + to-repr(s)))
+  end
+end
+
+fun typeassert<A, B>(s :: A, f :: (A -> Boolean), r :: ( -> Result<B>)) -> Result<B>:
+  if f(s): r() else: err(TypeError("assert")) end
+end
+
+fun sexp-as-list<A>(s :: Sexp, k :: (List<Sexp> -> Result<A>)) -> Result<A>:
+  cases (Sexp) s:
+    | s-list(l) => k(l)
+    | else => err(ParseError("expected list, got " + to-repr(s)))
+  end
+end
+
+fun sexp-as-list2<A>(s :: Sexp, k :: (Sexp, Sexp -> Result<A>)) -> Result<A>:
+  sexp-as-list(s, lam(l):
+      if l.length() == 2:
+        k(l.get(0), l.get(1))
+      else:
+        err(ParseError("expected list of length 2, got " + to-repr(l)))
+      end
+    end)
+end
+
+fun sexp-as-list3<A>(s :: Sexp, k :: (Sexp, Sexp, Sexp -> Result<A>)) -> Result<A>:
+  sexp-as-list(s, lam(l):
+      if l.length() == 3:
+        k(l.get(0), l.get(1), l.get(2))
+      else:
+        err(ParseError("expected list of length 3, got " + to-repr(l)))
+      end
+    end)
+end
+
+fun sexp-as-list4<A>(s :: Sexp, k :: (Sexp, Sexp, Sexp, Sexp -> Result<A>)) -> Result<A>:
+  sexp-as-list(s, lam(l):
+      if l.length() == 4:
+        k(l.get(0), l.get(1), l.get(2), l.get(3))
+      else:
+        err(ParseError("expected list of length 4, got " + to-repr(l)))
+      end
+    end)
+end
+
+fun sexp-as-list5<A>(s :: Sexp, k :: (Sexp, Sexp, Sexp, Sexp, Sexp -> Result<A>)) -> Result<A>:
+  sexp-as-list(s, lam(l):
+      if l.length() == 5:
+        k(l.get(0), l.get(1), l.get(2), l.get(3), l.get(4))
+      else:
+        err(ParseError("expected list of length 5, got " + to-repr(l)))
+      end
+    end)
+end
+
+# List lookup helper (curried).
+fun listLookup<A, B>(l :: List<{A; B}>, e :: Error) -> (A -> Result<B>):
+  lam(key):
+    cases (Option) find(lam(p :: {A; B}): p.{0} == key end, l):
+      | none => err(e)
+      | some(p) => ok(p.{1})
+    end
+  end
+end
+
+#Parse a not Unop
+#fun parseNot(s :: Sexp) -> Result<Unop>:
+# assert(s, eqc(S.s-sym("not")), thunk(ok(unot)))
+#end
+
+# Parse a Unop.
+fun parseUnop(s :: Sexp) -> Result<Unop>:
+  #parseNot(s) # only one possibility
+  seq(as-sym(s), lam(sym):
+      if sym == "not":
+        ok(unot)
+      else if sym == "neg":
+        ok(uneg)
+      else:
+        err(ParseError("expected unop"))
+      end
+    end)
+end
+
+# Parse a number value.
+fun parseNum(s :: Sexp) -> Result<Val>:
+  sexp-as-num(s)
+end
+
+fun parseTrue(s :: Sexp) -> Result<Boolean>:
+  sexp-assert(s, S.s-sym("true"), ok(true))
+end
+
+fun parseFalse(s :: Sexp) -> Result<Boolean>:
+  sexp-assert(s, S.s-sym("false"), ok(false))
+end
+
+#Parse a Boolean
+fun parseBool(s :: Sexp) -> Result<Boolean>:
+  plus(parseTrue(s), parseFalse(s))
+end
+
+# Parse a value.
+fun parseVal(s :: Sexp) -> Result<Val>:
+  #choice([list:
+  #   parseNum(s),
+  #   parseUnexp(s),
+  #   parseBool(s)
+  # ], ParseError("parseVal"))
+  plus(fmap(num, parseNum(s)), fmap(bool, parseBool(s)))
+end
+
+# Parse an identifier.
+fun parseIdent(s :: Sexp) -> Result<String>:
+  as-sym(s)
+end
+
+#Parse a binary operator
+binops :: List<{String; Binop}>
+binops = [list:
+  {"+"; add},
+  {"-"; sub},
+  {"*"; mul},
+  {"/"; div},
+  {"="; equ},
+  {"<"; lt},
+  {"and"; conj},
+  {"or"; disj}
+]
+
+fun parseBinop(s :: Sexp) -> Result<Exp>:
+  seq(as-sym(s), listLookup(binops, ParseError("parseBinop")))
+end
+
+# Parse a unary expression.
+fun parseUnexp(s :: Sexp) -> Result<Exp>:
+  sexp-as-list2(s, lam(s1, s2):
+      lift2(unexp)(parseUnop(s1), parseExp(s2))
+    end)
+end
+
+#Parse a binary expression
+fun parseBinexp(s :: Sexp) -> Result<Exp>:
+  sexp-as-list3(s, lam(s1, s2, s3):
+      lift3(binexp)(parseBinop(s1), parseExp(s2), parseExp(s3))
+    end)
+end
+
+fun parseIf(s :: Sexp) -> Result<Exp>:
+  sexp-as-list4(s, lam(s1, s2, s3, s4):
+      sexp-assert(s1, S.s-sym("if"),
+        lift3(ite)(parseExp(s2), parseExp(s3), parseExp(s4)))
+    end)
+end
+
+fun parseLet(s :: Sexp) -> Result<Exp>:
+  sexp-as-list5(s, lam(s1, s2, s3, s4, s5):
+      sexp-assert(s1, S.s-sym("let"),
+        lift4(letx)(as-sym(s2), parseType(s3), parseExp(s4), parseExp(s5)))
+    end)
+end
+
+fun parseType(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-sym(m) =>
+      if m == 'num': ok(tnum) else if m == 'bool': ok(tbool) else: err(ParseError("parseType: symbol case")) 
+  end
+    | s-list(l) => if eq(l.length(), 3):
+        assert(l.get(0), lam(n): eq(n, S.s-sym('->')) end, lam(): lift2(tarrow)(parseType(l.get(1)), parseType(l.get(2))) end)
+      else: err(ParseError("parseType: arrow case")) end
+    | else => err(ParseError("parseType: no type case found"))
+  end
+end
+
+fun parseFun(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-list(l) =>
+      if eq(l.length(), 4):
+        assert(l.get(0), lam(n): eq(n, S.s-sym('fun')) end, lam(): lift3(fn)(parseIdent(l.get(1)), parseType(l.get(2)), parseExp(l.get(3))) end)
+      else: err(ParseError('parseFun'))
+      end
+    | else => err(ParseError('parseFun'))
+  end
+end
+
+fun parseApp(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-list(l) =>
+      if eq(l.length(), 2): lift2(app)(parseExp(l.get(0)), parseExp(l.get(1)))
+      else: err(ParseError('parseApp'))
+      end
+    | else => err(ParseError('parseApp'))
+  end
+end
+
+fun parseRec(s :: Sexp) -> Result<Exp>:
+  cases (Sexp) s:
+    | s-list(l) =>
+      if eq(l.length(), 4):
+        assert(l.get(0), lam(n): eq(n, S.s-sym('rec')) end, lam(): lift3(recx)(parseIdent(l.get(1)), parseType(l.get(2)), parseExp(l.get(3))) end)
+      else: err(ParseError('parseRec'))
+      end
+    | else => err(ParseError('parseRec'))
+  end
+end
+
+# Convert an s-expression to a Scheme1 expression.
 fun parseExp(s :: Sexp) -> Result<Exp>:
-  ... # Fill in here (start by copying over your parsing code from PA5)
+  choice([list:
+      fmap(val, parseVal(s)),
+      fmap(ident, parseIdent(s)),
+      parseUnexp(s),
+      parseBinexp(s),
+      parseLet(s),
+      parseIf(s),
+      parseFun(s),
+      parseApp(s),
+      parseRec(s)
+    ], ParseError("parseExp"))
 end
 
 # The overall parser is the composition of parseExp with S.read-s-exp.
@@ -416,7 +678,26 @@ end
 |#
 
 fun desugar(e :: Exp) -> ExpC:
-  ... # Fill in here (start by copying over your desugarer code from PA5)
+  cases (Exp) e:
+    | val(v) => val(v)
+    | ident(id) => ident(id)
+    | unexp(uop, m) =>
+      cases (Unop) uop:
+        | uneg => binexp(sub, val(num(0)), desugar(m))
+        | unot => unexp(uop, desugar(m))
+      end
+    | binexp(biop, e1, e2) =>
+      cases (Binop) biop:
+        | disj => ite(desugar(e1), val(bool(true)), desugar(e2))
+        | conj => ite(desugar(e1), desugar(e2), val(bool(false)))
+        | else => binexp(biop, desugar(e1), desugar(e2))
+      end
+    | ite(i, t, s) => ite(desugar(i), desugar(t), desugar(s))
+    | letx(x, lty, n, ex) => app(fn(x, lty, desugar(ex)), desugar(n))
+    | fn(st, ty, bd) => fn(st, ty, desugar(bd))
+    | app(l, r) => app(desugar(l), desugar(r))
+    | recx(rst, rty, rbd) => recx(rst, rty, desugar(rbd))
+  end
 end
 
 check "desugar(...)":
@@ -469,9 +750,57 @@ end
 # The initial type environment (the typing context) contains no bindings.
 init-ctx :: Env<Type> = env(lam(x :: String): err(TypeError(x + " is unbound")) end)
 
+fun checkbinexp(gamma :: Env<Type>, bop :: Binop, e1 :: Exp, e2 :: Exp) -> Result<Type>:
+  cases (Result) tycheck(gamma, e1):
+    | err(e) => err(e)
+    | else =>
+      cases (Result) tycheck(gamma, e2):
+        | err(r) => err(r)
+        | else =>
+          cases (Binop) bop:
+            | add => ok(tnum)
+            | sub => ok(tnum)
+            | mul => ok(tnum)
+            | div => ok(tnum)
+            | equ => ok(tbool)
+            | lt => ok(tbool)
+            | conj => ok(tbool)
+            | disj => ok(tbool)
+          end
+      end
+  end
+end
+
 # Typecheck a Scheme1 Core expression under typing context gamma.
 fun tycheck(gamma :: Env<Type>, e :: Exp) -> Result<Type>:
-  ... # Fill in here
+  cases (Exp) e:
+    | val(v) =>
+      cases (Val) v:
+        | num(n) => ok(tnum)
+        | bool(b) => ok(tbool)
+        | else => err(TypeError('typecheckVal'))
+      end
+    | ident(i) => lookup(gamma, i)
+    | unexp(uop, uv) =>
+      cases (Unop) uop:
+        | unot => ok(tbool)
+        | uneg => ok(tnum)
+      end
+    | binexp(bop, bv1, bv2) => checkbinexp(gamma, bop, bv1, bv2)
+    | ite(_, th, el) =>
+      if (eq(tycheck(gamma, th), tycheck(gamma, el))): tycheck(gamma, th)
+      else: err(TypeError('ite inconsistent branches'))
+      end
+    | letx(le, tp, l, r) => tycheck(upd(gamma, le, tp), r)
+    | fn(par, ty, bd) => lift2(tarrow)(ok(ty), tycheck(upd(gamma, par, ty), bd))
+    | app(e1, e2) =>
+      cases (Exp) e1:
+        | fn(fns, fntp, fnbd) => typeassert(tycheck(gamma, e2), lam(s): s == ok(fntp) end, lam(): tycheck(upd(gamma, fns, fntp), fnbd) end)
+        | recx(rcs, rctp, rcbd) => typeassert(tycheck(gamma, e2), lam(r): r == ok(rctp) end, lam(): tycheck(upd(gamma, rcs, rctp), rcbd) end)
+        | else => err(TypeError('app error in typecheck'))
+      end
+    | recx(_, t, _) => ok(t)
+  end
 end
 
 check "tycheck(..)":
@@ -531,9 +860,99 @@ end
    to see how it should be done.
 |#
 
+fun val-as-bool<A>(v :: Val, k :: (Boolean -> Result<A>)) -> Result<A>:
+  cases (Val) v:
+    | bool(b) => k(b)
+    | else => err(TypeError("val-as-bool"))
+  end
+end
+
+fun val-as-num<A>(v :: Val, k :: (Number -> Result<A>)) -> Result<A>:
+  cases (Val) v:
+    | num(n) => k(n)
+    | else => err(TypeError("val-as-num"))
+  end
+end
+
+fun val-as-num2<A>(v1 :: Val, v2 :: Val, k :: (Number, Number -> Result<A>)) -> Result<A>:
+  val-as-num(v1, lam(n1): val-as-num(v2, lam(n2): k(n1, n2) end) end)
+end
+
+fun val-as-clos<A>(v :: Val, k :: (Env<Val>, String, Exp -> Result<A>)) -> Result<A>:
+  cases (Val) v:
+    | clos(cenv, x, body) => k(cenv, x, body)
+    | else => err(TypeError("val-as-clos"))
+  end
+end
+
+fun interpUnexp(rho :: Env, u :: Unop, e :: Exp) -> Result<Val>:
+  seq(interp(rho, e), lam(v):
+      val-as-bool(v, lam(b):
+          ok(bool(not(b)))
+        end)
+    end)
+end
+
+fun interpBinexp(rho :: Env, b :: Binop, e1 :: Exp, e2 :: Exp) -> Result<Val>:
+  seq2(interp(rho, e1), interp(rho, e2), lam(v1, v2):
+      val-as-num2(v1, v2, lam(n1, n2):
+          cases (Binop) b:
+            | add => ok(num(n1 + n2))
+            | sub => ok(num(n1 - n2))
+            | mul => ok(num(n1 * n2))
+            | div => if n2 == 0:
+                err(InterpError("interpBinexp: division by zero"))
+              else:
+                ok(num(n1 / n2))
+              end
+            | equ => ok(bool(n1 == n2))
+            | lt => ok(bool(n1 < n2))
+          end
+        end)
+    end)
+end
+
+fun interpIf(rho :: Env, e1 :: Exp, e2 :: Exp, e3 :: Exp) -> Result<Val>:
+  seq(interp(rho, e1), lam(v1):
+      val-as-bool(v1, lam(b):
+          if b:
+            interp(rho, e2)
+          else:
+            interp(rho, e3)
+          end
+        end)
+    end)
+end
+
+fun interpFun(rho :: Env<Val>, x :: String, body :: ExpC) -> Result<Val>:
+  ok(clos(rho, x, body))
+end
+
+fun interpApp(rho :: Env<Val>, e1 :: ExpC, e2 :: ExpC) -> Result<Val>:
+  seq2(interp(rho, e1), interp(rho, e2), lam(v1, v2):
+      val-as-clos(v1, lam(cenv, x, body):
+          interp(upd(cenv, x, v2), body)
+        end)
+    end)
+end
+
 # Evaluate an expression under a given environment, producing a value.
-fun interp(rho :: Env<Exp>, e :: ExpC) -> Result<Val>:
-  ... # Fill in here (start by copying over your interpreter code from PA5)
+fun interp(rho :: Env<Val>, e :: ExpC) -> Result<Val>:
+  cases (Exp) e:
+    | val(v) => ok(v)
+    | ident(x) => lookup(rho, x)
+    | unexp(u, e1) => interpUnexp(rho, u, e1)
+    | binexp(b, e1, e2) => interpBinexp(rho, b, e1, e2)
+    | ite(e1, e2, e3) => interpIf(rho, e1, e2, e3)
+    | letx(x, ilty, e1, e2) => err(InterpError("let should have been desugared"))
+      # | fn(x, body) => interpFun(rho, x, body)
+    | app(e1, e2) => 
+      cases (Exp) e1:
+        | fn(fns, fnt, fnb) => seq(interp(rho, e2), lam(q): interp(upd(rho, fns, q), fnb) end)
+        | recx(rs, rt, rb) => seq(interp(rho, e2), lam(q): interp(upd(rho, rs, q), rb) end)
+        | else => err(InterpError('interp app error'))
+      end
+  end
 end
 
 # The initial variable environment contains no bindings.
