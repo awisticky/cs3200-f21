@@ -1,4 +1,5 @@
 # Organization of Programming Languages
+## This repository contains my work from the Fall 2021 CS3200. It has been forked from the class repository to retrieve the assignments as they were provided.
 
 [Course Discord server](https://discord.gg/jXJA6424Dy)
 
